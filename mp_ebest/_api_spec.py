@@ -328,6 +328,14 @@ def _extract(res_code, content):
     return {'res_code': res_code, 'kind': kind, 'desc': desc, 'uses': uses, 'inblock': inblock, 'outblock': outblock}
 
 
+# @@@@
+def _lists_from_res_file(path):
+    content = _replace_re(replace_dict=REPLACEMETS, string=_read_file(path=path, encoding="cp949"))
+    res = _extract(file.split('.')[0], content)
+
+
+
+
 def _save_res_to_db(files=[], agency='ebest'):
     """Res 파일 -> mongodb 저장
         files: 파일 이름 't0150.res', 'B7_.res'
