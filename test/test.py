@@ -34,16 +34,28 @@ JSON_FOLDER = ""
 PY_FOLDER = ""
 MASTER_USER_FILE = "master_ebest_api.json"
 MASTER_ORGN_FILE = "__master_ebest_api.json"
-PACK_JSON_FILE = "packed_ebest_api.json"
+PACKED_JSON_FILE = "packed_ebest_api.json"
 SPEC_DICT_FILE = "sample.py"
 
 BLOCK_VAR = "EBEST_API_SPECS"  # python에 삽입할 block 시작 문자열
 
+ADDED_MAIN_FIELDS = {  # master json에 추가될 필드
+    "res_type": "",  # res 종류: TR|Real
+    "desc_devCenter": "",  # API 설명(devCenter)
+    "usage": "fetch", # 사용용도: fetch|tranaction|search|check
+    "priority": "3",  # 우선순위: 1|2|3|4|5 클수록 우선순위 높음
+    "market": "KRX",  # KOSPI / KOSDAQ / KRX: KOSPI + KOSDAQ
+    "item": "",  # 거래 아이템: 현물|선물|옵션
+    "remark": "",  # 비고: API 특징
+    "limit_1sec": "",  # 요청 제한: 1sec당 req 횟수 
+    "limit_10min": "",  # 요청 제한: 10min당 req 횟수
+    "included": ""  # 사용(포함)된 파일: 예) fetch.py
+}
 
 ##@@@ Private Function
 ##============================================================
 
-##@@ util function
+##@@ util function TODO: mp_util에서 import
 ##------------------------------------------------------------
 def _load_from_file(path, type="str", encoding="utf-8"):
     """[summary]
@@ -68,6 +80,15 @@ def _load_from_file(path, type="str", encoding="utf-8"):
 
 
 def _save_to_file(data, path):
+    """파일로 저장(파일 확장자(json/csv/xlsx/...)별 저장 방법 자동 지정)
+
+    Args:
+        data ([type]): [description]
+        path ([type]): [description]
+
+    Returns:
+        [type]: [description]
+    """
     if '.json' in path[-6:]:
         json.dump(data, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=4)
         return True
@@ -76,6 +97,15 @@ def _save_to_file(data, path):
             f.write(data)
             f.close
         return True
+
+
+def _load_from_cloud():
+    pass
+
+
+def _save_to_cloud():
+    pass
+
 
 ##@@ sub function
 ##------------------------------------------------------------
@@ -115,7 +145,7 @@ def _input_default(name="", type="char"):
     # '"ncnt": 0': '"ncnt": 1',  # 틱(분)개수 단위?
 
 
-def _split_inblock_pack_json(val):
+def _split_inblock_packed_json(val):
     # "shcode": " ##단축코드@@"
     part = val.split("##")
     default = part[0].strip()
@@ -124,7 +154,7 @@ def _split_inblock_pack_json(val):
     return (desc, attr, default)
 
 
-def _split_outblock_pack_json(val):
+def _split_outblock_packed_json(val):
     # "#hotime": "ht`char##호가시간@@ Remark 변경",
     # "name": "hotime",
     # "desc": "호가시간",
@@ -135,35 +165,59 @@ def _split_outblock_pack_json(val):
     # "use": 1
     nick = val.split("`")[0]
     part = val.split("##")[1].strip()
-    desc = part[1].split("@@")[0].strip()
-    attr = part[1].split("@@")[1].strip()
+    desc = part.split("@@")[0].strip()
+    attr = part.split("@@")[1].strip()
     return (desc, attr, nick)
 
 
-def _search_field_index_master_json(res_code="", k0="input", k1="InBlock", query={"name": ""}, master={}):
-    """master json에서 (res_code, k0, k1, query)를 만족하는 field의 list index
+def _search_field_index_master_json(res_code="", block_type="input", block_name="InBlock", query={"name": ""}, master={}):
+    """master json에서 (res_code, block_type, block_name, query)를 만족하는 field의 list index
 
     Args:
         res_code (str, optional): [description]. Defaults to "".
-        k0 (str, optional): [description]. Defaults to "input".
-        k1 (str, optional): [description]. Defaults to "InBlock".
+        block_type (str, optional): [description]. Defaults to "input".
+        block_name (str, optional): [description]. Defaults to "InBlock".
         query (dict, optional): [description]. Defaults to {"name": ""}.
         master (dict, optional): [description]. Defaults to {}.
 
     Returns:
         [type]: [description]
     """
-    for index, field in enumerate(master[res_code][k0][k1]['fields']):
+    for index, field in enumerate(master[res_code][block_type][block_name]['fields']):
         if field[list(query.keys())[0]] == list(query.values())[0]:
             return index
     return False
 
 
+def _update_inblock_master_json(res_code="", block_name="InBlock", field_name="", field_val="", master={}):
+    # field_name: <field_name>, field_val: "<default>##<desc>@@<attr>"
+    (desc, attr, default) = _split_inblock_packed_json(field_val)
+    # @@@
+    index = _search_field_index_master_json(res_code=res_code, block_type="input", block_name=block_name, query={"name": field_name}, master=master)
+    # _update_master_block_val(res_code, block_type, block_name, index, field_name, key, val) @@@
+    master[res_code]['input'][block_name]['fields'][index]['desc'] = desc
+    master[res_code]['input'][block_name]['fields'][index]['attr'] = attr
+    master[res_code]['input'][block_name]['fields'][index]['default'] = default
 
 
-# _update_master_block_val(res_code, k0, k1, index, k2, val)
+def _update_outblock_master_json(res_code="", block_name="InBlock", field_name="", field_val="", master={}):
+    use = 1
+    if '#' in field_name:
+        field_name = field_name.replace("#", "")
+        use = 0
+    (desc, attr, nick) = _split_outblock_packed_json(field_val)
 
-##@@ data process function
+    index = _search_field_index_master_json(res_code=res_code, block_type="output", block_name=block_name, query={"name": field_name}, master=master)
+    master[res_code]['output'][block_name]['fields'][index]['desc'] = desc
+    master[res_code]['output'][block_name]['fields'][index]['attr'] = attr
+    master[res_code]['output'][block_name]['fields'][index]['nick'] = nick
+    master[res_code]['output'][block_name]['fields'][index]['use'] = use
+
+
+# _update_master_block_val(res_code, block_type, block_name, index, field_name, val)
+
+
+##@@ data extract/convert function
 ##------------------------------------------------------------
 
 def _master_json_from_res_folder(src=RES_FOLDER, user_data=True):
@@ -184,7 +238,7 @@ def _master_json_from_res_folder(src=RES_FOLDER, user_data=True):
         os.listdir(src)
     )
 
-    def parse_field(line, inout):
+    def parse_field(line, block_type):
         cols = line.split(',')
         name = cols[1].strip()
         desc = cols[0].strip()
@@ -210,7 +264,7 @@ def _master_json_from_res_folder(src=RES_FOLDER, user_data=True):
             attr = attr.strip()   ## TODO: attr: "0:시간1:일자"  -> "0: 시간, 1: 일자"
             fields = dict(fields, **dict(desc=desc, size=size, attr=attr))
 
-            if inout == "input":
+            if block_type == "input":
                 fields['default'] = _input_default(name=cols[1].strip(), type=cols[3].strip())  # field 디폴트값(inblock용) NOTE: API 요청시 input 디폴트값 지정
             else:
                 fields['nick'] = cols[1].strip()  # field 별칭(outblock용) NOTE: 사용자 추가(편집) 필드, API 응답후 response key 변경
@@ -243,16 +297,29 @@ def _master_json_from_res_folder(src=RES_FOLDER, user_data=True):
         return parsed
     
     for fname in fnames:
-        meta[fname.replace('.res','')] = parse_file(
+        res_code = fname.replace('.res','')
+
+        meta[res_code] = parse_file(
             _load_from_file(os.path.join(src, fname), type="list", encoding="cp949")
             # open(os.path.join(src, fname), encoding="cp949").readlines()
         )
 
+        for key, val in ADDED_MAIN_FIELDS.items():
+            meta[res_code][key] = val
+
+        if len(res_code) < 4 or '_' in res_code:
+            meta[res_code]['res_type'] = "Real"
+        else:
+            meta[res_code]['res_type'] = "TR"
+
+        meta[res_code]['desc_devCenter'] = meta[res_code]['desc']
+
+
     return meta
 
 
-def _pack_json_from_meta_json(src={}):
-    """meta_json 파일 -> pack_json(json 형식 유지/comment 삽입)
+def _packed_json_from_master_json(src={}):
+    """master_json 파일 -> packed_json(json 형식 유지/comment 삽입)
 
     Args:
         src (dict, optional): [description]. Defaults to None.
@@ -263,27 +330,27 @@ def _pack_json_from_meta_json(src={}):
     packed = {}
     for res_code, data in src.items():
         out = {}
-        for k0, v0 in data.items():
-            if k0 == 'desc':
+        for block_type, v0 in data.items():
+            if block_type == 'desc':
                 desc = v0
                 continue
-            out[k0] = {}
-            for k1, v1 in v0.items():
-                out[k0][k1] = {}
-                for k2, v2 in v1.items():
-                    if k2 == 'fields' and k0 == 'input':
-                        for field in v2:
-                            out[k0][k1][field['name']] = f"{field['default']}##{field['desc']}@@{field['attr']}"
-                    if k2 == 'fields' and k0 == 'output':
-                        for field in v2:
+            out[block_type] = {}
+            for block_name, block_val in v0.items():
+                out[block_type][block_name] = {}
+                for field_name, field_val in block_val.items():
+                    if field_name == 'fields' and block_type == 'input':
+                        for field in field_val:
+                            out[block_type][block_name][field['name']] = f"{field['default']}##{field['desc']}@@{field['attr']}"
+                    if field_name == 'fields' and block_type == 'output':
+                        for field in field_val:
                             use_tag = "#" if field['use'] == 0 else ""
-                            out[k0][k1][f"{use_tag}{field['name']}"] = f"{field['nick']}`{field['type']}##{field['desc']}@@{field['attr']}"
+                            out[block_type][block_name][f"{use_tag}{field['name']}"] = f"{field['nick']}`{field['type']}##{field['desc']}@@{field['attr']}"
             packed[f"{res_code}##{desc}"] = out
 
     return packed
 
 
-def _spec_dict_from_pack_json(src=""):
+def _spec_dict_from_packed_json(src=""):
     """res spec dict(python 변수용) <- packed json
 
     Args:
@@ -300,7 +367,7 @@ def _spec_dict_from_pack_json(src=""):
     return content
 
 
-def _pack_json_from_spec_dict(src=""):
+def _packed_json_from_spec_dict(src=""):
     """res spec dict(python 변수용) <- packed json
 
     Args:
@@ -319,7 +386,7 @@ def _pack_json_from_spec_dict(src=""):
     return json.loads(data)
 
 
-def _master_json_from_pack_json(src={}, dst={}):
+def _master_json_from_packed_json(src={}, dst={}):
     """master_json <- packed json
 
     Args:
@@ -329,76 +396,119 @@ def _master_json_from_pack_json(src={}, dst={}):
         [type]: [description]
     """
 
-    dst = {}
+    # dst = {}
     for res_code, data in src.items():
         (code, _desc) = res_code.split("#", 1)
-        out = {}
-        for k0, v0 in data.items():
-            out[k0] = {}
-            for k1, v1 in v0.items():
-                out[k0][k1] = {}
-                for k2, v2 in v1.items():
-                    if k0 == 'input':
-                        # k2: <field_name>, v2: "<default>##<desc>@@<attr>"
-                        (desc, attr, default) = _split_inblock_pack_json(v2)
-                        # @@@
-                        index = _search_field_index_master_json(res_code=code, k0=k0, k1=k1, query={"name": k2}, master=dst)
-                        # _update_master_block_val(res_code, k0, k1, index, k2, key, val) @@@
-                        dst[res_code][k0][k1]['fields'][index]['desc'] = desc
-                        dst[res_code][k0][k1]['fields'][index]['attr'] = attr
-                        dst[res_code][k0][k1]['fields'][index]['default'] = default
+        # out = {}
+        for block_type, v0 in data.items():
+            # out[block_type] = {}
+            for block_name, block_val in v0.items():
+                # out[block_type][block_name] = {}
+                for field_name, field_val in block_val.items():
+                    if block_type == 'input':
+                        _update_inblock_master_json(res_code=code, block_name=block_name, field_name=field_name, field_val=field_val, master=dst)
+                        # # field_name: <field_name>, field_val: "<default>##<desc>@@<attr>"
+                        # (desc, attr, default) = _split_inblock_packed_json(field_val)
+                        # # @@@
+                        # index = _search_field_index_master_json(res_code=code, block_type=block_type, block_name=block_name, query={"name": field_name}, master=dst)
+                        # # _update_master_block_val(res_code, block_type, block_name, index, field_name, key, val) @@@
+                        # dst[res_code][block_type][block_name]['fields'][index]['desc'] = desc
+                        # dst[res_code][block_type][block_name]['fields'][index]['attr'] = attr
+                        # dst[res_code][block_type][block_name]['fields'][index]['default'] = default
 
-                    if k0 == 'output':
-                        name = k2
-                        use = 1
-                        if '#' in k2:
-                            name = name.replace("#", "")
-                            use = 0
-                        (desc, attr, nick) = _split_outblock_pack_json(v2)
+                    if block_type == 'output':
+                        _update_outblock_master_json(res_code=code, block_name=block_name, field_name=field_name, field_val=field_val, master=dst)
+                        # name = field_name
+                        # use = 1
+                        # if '#' in field_name:
+                        #     name = name.replace("#", "")
+                        #     use = 0
+                        # (desc, attr, nick) = _split_outblock_packed_json(field_val)
 
-                        index = _search_field_index_master_json(res_code=code, k0=k0, k1=k1, query={"name": k2}, master=dst)
-                        # _update_master_block_val(res_code, k0, k1, index, k2, key, val) @@@
-                        dst[res_code][k0][k1]['fields'][index]['desc'] = desc
-                        dst[res_code][k0][k1]['fields'][index]['attr'] = attr
-                        dst[res_code][k0][k1]['fields'][index]['nick'] = nick
+                        # index = _search_field_index_master_json(res_code=code, block_type=block_type, block_name=block_name, query={"name": field_name}, master=dst)
+                        # # _update_master_block_val(res_code, block_type, block_name, index, field_name, key, val) @@@
+                        # dst[res_code][block_type][block_name]['fields'][index]['desc'] = desc
+                        # dst[res_code][block_type][block_name]['fields'][index]['attr'] = attr
+                        # dst[res_code][block_type][block_name]['fields'][index]['nick'] = nick
 
-            dst[f"{res_code}##{desc}"] = out
+            # dst[f"{res_code}##{desc}"] = out
 
     return dst
+
+
+def _master_json_from_spec_dict(src={}, dst={}):
+    """master_json <- packed json
+
+    Args:
+        src (str, ""): [description]. Defaults to None.
+
+    Returns:
+        [type]: [description]
+    """
+    src = _packed_json_from_spec_dict(src=src)
+    return _master_json_from_packed_json(src=src, dst=dst)
+
+
+def _spec_dict_from_master_json(src={}):
+    """master_json <- packed json
+
+    Args:
+        src (str, ""): [description]. Defaults to None.
+
+    Returns:
+        [type]: [description]
+    """
+    src = _packed_json_from_master_json(src=src)
+    return _spec_dict_from_packed_json(src=src)
+
+
+##@@ query from master json
+##------------------------------------------------------------
+def _find_res_code_from_master_json(src={}, query={}):
+    if query == {}:
+        return list(src.keys())
+
+    rs = []
+    for res_code, res_val in src.items():
+        if res_val[list(query.keys())[0]] == list(query.values())[0]:
+            rs.append(res_code)
+    
+    return rs
+
+
+def _find_main_fields_from_master_json(src={}, query={}):
+    rs = []
+    excluded_fields = ["input", "output"]
+    for res_code, res_val in src.items():
+        unit = {"res_code": res_code}
+        for field_name, field_val in res_val.items():
+            if not field_name in excluded_fields:
+                unit[field_name] = field_val
+        rs.append(unit)
+    return rs
+
+    # for res_code, res_val in src.items():
+    #     if res_val[list(query.keys())[0]] == list(query.values())[0]:
+    #         rs.append(res_code)
+    
+    # return rs
 
 
 ##@@@ Public Class/function
 ##============================================================
 
-def update_blocks_from_packed_json(src="packed_meta_json_2.json", dst="dict_string.py", query=None):
+def init_ebest_api():
+    ## NOTE: _master_json_from_res_folder
+    src = _master_json_from_res_folder(user_data=True)
+    _save_to_file(src, f"{JSON_FOLDER}{MASTER_USER_FILE}")
 
-    replace_content = _spec_dict_from_pack_json(src=src, dst=None, query=query, save=False)
-
-    with open(dst, "r", encoding="utf-8") as f:
-        content = f.read()
-        f.close()
-        # print(f"len(content): {len(content)}")
-
-        regex = "blocks *= *\{[\S\n ]*?\n\}\n"  
-        blocks_content = re.findall(regex, content)[0]
-        print(f"len(blocks_content): {len(blocks_content)}")
-
-        # # content = content.replace(blocks_content, replace_content)
-        content = content.replace(blocks_content, replace_content)
-        print(content)
-        print(f"len(content): {len(content)}")
-
-    
-    with open(dst, "w", encoding="utf-8") as f:
-        f.write(content + "\n")
+    # _save_to_file(_packed_json_from_master_json(src=src), f"{JSON_FOLDER}{PACKED_JSON_FILE}")
 
 
-    # out_content = re.sub(r' # *"', ' "#', blocks_content)
-    # out_content = re.sub(r'" *: *\{ *#+ *(.+)', r'##\1": {', out_content)
-    # out_content = re.sub(r'", *#+ *(.+)', r'##\1",', out_content)
-        
-    # with open(dst, "w", encoding="utf-8") as f:
-    #     f.write(out_content + "\n")
+def insert_res_block_to_py():
+    pass
+
+
 
 if __name__ == "__main__":
     pass
@@ -407,57 +517,47 @@ if __name__ == "__main__":
     # data = _master_json_from_res_folder(user_data=True)
     # _save_to_file(data, f"{JSON_FOLDER}{MASTER_USER_FILE}")
 
-    ## NOTE: _pack_json_from_meta_json
+    ## NOTE: _packed_json_from_master_json
     # path = f"{JSON_FOLDER}{MASTER_USER_FILE}"
     # src = _load_from_file(path=path, type="dict")
-    # data = _pack_json_from_meta_json(src)
-    # _save_to_file(data, f"{JSON_FOLDER}{PACK_JSON_FILE}")
+    # data = _packed_json_from_master_json(src)
+    # _save_to_file(data, f"{JSON_FOLDER}{PACKED_JSON_FILE}")
 
-    ## NOTE: _spec_dict_from_pack_json
-    # path = f"{JSON_FOLDER}{PACK_JSON_FILE}"
+    ## NOTE: _spec_dict_from_packed_json
+    # path = f"{JSON_FOLDER}{PACKED_JSON_FILE}"
     # src = _load_from_file(path=path, type="str")
-    # data = _spec_dict_from_pack_json(src)
+    # data = _spec_dict_from_packed_json(src)
     # _save_to_file(data, f"{JSON_FOLDER}{SPEC_DICT_FILE}")
 
-    ## NOTE: _pack_json_from_spec_dict
+    ## NOTE: _packed_json_from_spec_dict
     # path = f"{JSON_FOLDER}{SPEC_DICT_FILE}"
     # src = _load_from_file(path=path, type="str")
-    # data = _pack_json_from_spec_dict(src)
+    # data = _packed_json_from_spec_dict(src)
     # _save_to_file(data, "packed_sample.json")
 
-    path = f"{JSON_FOLDER}{MASTER_USER_FILE}"
-    master = _load_from_file(path=path, type="dict")
-    # print(master["B7_"])
-    # "B7_", "output", "OutBlock", 
-    index = _search_field_index_master_json(res_code="B7_", k0="output", k1="OutBlock", query={"name": "lp_offerho1"}, master=master)
-    print(f"index: {index}")
-    # _pack_json_from_spec_dict()
-    # _pack_json_from_spec_dict(src=None, dst="packed_sample.json")
-    # update_blocks_from_packed_json()
+    ## NOTE: _master_json_from_packed_json
+    # src = _load_from_file(path="packed_sample_.json", type="dict")
+    # dst = _load_from_file(path=f"{JSON_FOLDER}{MASTER_USER_FILE}", type="dict")
+    # data = _master_json_from_packed_json(src=src, dst=dst)
+    # path = "master_sample.json"
+    # _save_to_file(data, path)
 
-    # path = f"{JSON_FOLDER}{PACK_JSON_FILE}"
+    ## NOTE: _master_json_from_spec_dict(src={}, dst={})
+    # src = _load_from_file(path="sample_.py", type="str")
+    # dst = _load_from_file(path=f"{JSON_FOLDER}{MASTER_USER_FILE}", type="dict")
+    # data = _master_json_from_spec_dict(src=src, dst=dst)
+    # path = "master_sample2.json"
     # _save_to_file(data, path)
 
 
+    ## NOTE: _find_res_code_from_master_json
+    src = _load_from_file(path=f"{JSON_FOLDER}{MASTER_USER_FILE}", type="dict")
+    # query = {"desc": "ETF호가잔량(B7)"}
+    query = {}
+    # data = _find_res_code_from_master_json(src=src, query=query)
+    data =_find_main_fields_from_master_json(src=src, query=query)
+    path = "main_fields.json"
+    _save_to_file(data, path)
 
-# 1. json file line -> dict line
-# line = re.sub(r'##(.*)?"(.+)', r'"$2 ## $1', line.replace('"#', '# "')
-
-# 2. dict -> json
-# ": *\{ *#+ *(.+)	##$1": {
-# ", *#+ *(.+)	##$1",
-
-
-# def _blocks_dict_from_file(path=''):
-#     """
-#     path의 파일에서 blocks의 dict값을 반환
-#     """
-#     content = _read_file(path)  # NOTE: 편집할 파일 내용 읽어옴
-
-#     regex = "blocks *= *\{[\S\n ]*?\n\}\n"  # NOTE: blocks = {...} 부분(읽어올 dict 부분)
-#     o_block = re.findall(regex, content)[0]
-#     o_block = o_block[o_block[:20].index('{'):]  # NOTE: 'blocks = ' 제거하기 위해 첫번째 '{' 위치 찾음
-
-#     return literal_eval(_replace_re(replace_dict=REPLACEMETS_BLOCKS2, string=o_block))
-
-
+    ## NOTE: Public Function
+    # init_ebest_api()
