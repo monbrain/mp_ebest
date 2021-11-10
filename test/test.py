@@ -14,6 +14,7 @@
 ##@@ Built-In Package/Module
 ##------------------------------------------------------------
 import os, sys, re, json
+import pandas as pd
 
 ##@@ External Package/Module
 ##------------------------------------------------------------
@@ -551,13 +552,30 @@ if __name__ == "__main__":
 
 
     ## NOTE: _find_res_code_from_master_json
-    src = _load_from_file(path=f"{JSON_FOLDER}{MASTER_USER_FILE}", type="dict")
-    # query = {"desc": "ETF호가잔량(B7)"}
-    query = {}
-    # data = _find_res_code_from_master_json(src=src, query=query)
-    data =_find_main_fields_from_master_json(src=src, query=query)
-    path = "main_fields.json"
-    _save_to_file(data, path)
+    # src = _load_from_file(path=f"{JSON_FOLDER}{MASTER_USER_FILE}", type="dict")
+    # # query = {"desc": "ETF호가잔량(B7)"}
+    # query = {}
+    # # data = _find_res_code_from_master_json(src=src, query=query)
+    # data =_find_main_fields_from_master_json(src=src, query=query)
+    # path = "main_fields.json"
+    # _save_to_file(data, path)
 
     ## NOTE: Public Function
     # init_ebest_api()
+
+    ## NOTE: pandas
+    ## pandas.read_excel(io, sheet_name=0, header=0, names=None, index_col=None, usecols=None, squeeze=False, dtype=None, engine=None, converters=None, true_values=None, false_values=None, skiprows=None, nrows=None, na_values=None, keep_default_na=True, na_filter=True, verbose=False, parse_dates=False, date_parser=None, thousands=None, comment=None, skipfooter=0, convert_float=None, mangle_dupe_cols=True, storage_options=None)
+    df = pd.read_excel("../mp_ebest/specs/api_requests_ebest.xlsx", sheet_name="ebest_TR2")
+
+    ## DataFrame.to_excel(excel_writer, sheet_name='Sheet1', na_rep='', float_format=None, columns=None, header=True, index=True, index_label=None, startrow=0, startcol=0, engine=None, merge_cells=True, encoding=None, inf_rep='inf', verbose=True, freeze_panes=None, storage_options=None)
+    # df.to_excel("../mp_ebest/specs/api_requests_ebest.xlsx", sheet_name="ebest_TR2")
+
+    # 최초 생성 이후 mode는 append; 새로운 시트를 추가합니다.
+    path = "../mp_ebest/specs/api_requests_ebest.xlsx"
+    sheet_name="ebest_TR3"
+    if not os.path.exists(path):
+        with pd.ExcelWriter(path, mode='w', engine='openpyxl') as writer:
+            df.to_excel(writer, index=False)
+    else:
+        with pd.ExcelWriter(path, mode='a', engine='openpyxl') as writer:
+            df.to_excel(writer, index=False)
